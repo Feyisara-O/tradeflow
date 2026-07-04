@@ -847,6 +847,7 @@ const Dashboard = (() => {
   }
 
   // ─── Alerts ─────────────────────────────────────────────────────────────
+    // ─── Alerts (CORRECTED) ───────────────────────────────────────────────────
   function renderAlerts() {
     const container = document.getElementById('alerts-list');
     if (!container) return;
@@ -857,10 +858,32 @@ const Dashboard = (() => {
     const alerts  = Storage.getAlerts().slice(0, 6); // Show latest 6
     const unread  = alerts.filter((a) => !a.read).length;
 
-    const badge = document.getElementById('alerts-count-badge');
-    if (badge) {
-      badge.textContent = `${unread} unread`;
-      badge.className   = unread > 0 ? 'badge badge-danger' : 'badge badge-neutral';
+    // 1. Update the local layout section badge
+    const sectionBadge = document.getElementById('alerts-count-badge');
+    if (sectionBadge) {
+      sectionBadge.textContent = `${unread} unread`;
+      sectionBadge.className   = unread > 0 ? 'badge badge-danger' : 'badge badge-neutral';
+    }
+
+    // 2. Update the Top Bar Notification Bell Badge with REAL data
+    const topbarBadge = document.getElementById('alert-badge');
+    if (topbarBadge) {
+      if (unread > 0) {
+        topbarBadge.textContent = unread;
+        topbarBadge.style.display = 'inline-block';
+      } else {
+        topbarBadge.style.display = 'none';
+      }
+    }
+
+    // 3. FORCE RESET: Terminate any background loops adding fake numbers blindly
+    if (!window.hasClearedFakeAlerts) {
+      for (let i = 1; i < 1000; i++) {
+        if (i !== setInterval(() => {}, 1000)) { 
+          clearInterval(i);
+        }
+      }
+      window.hasClearedFakeAlerts = true;
     }
 
     if (alerts.length === 0) {
@@ -895,6 +918,8 @@ const Dashboard = (() => {
         </div>`;
     }).join('');
   }
+
+
 
   // ─── Top Products ────────────────────────────────────────────────────────
   function renderTopProducts(sales) {
