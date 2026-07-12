@@ -1,7 +1,7 @@
 /**
  * LedgerPulse Service Worker
  * Handles caching and offline support for the PWA
- * Strategy: Cache-First for static assets, Network-First for pages
+ * Strategy: Network-First for ALL assets during development to avoid caching locks
  */
 
 const CACHE_NAME = 'ledgerpulse-v1.0.0';
@@ -55,10 +55,10 @@ self.addEventListener('install', (event) => {
 
 // ─── Activate Event ────────────────────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
-  console.log('[ServiceWorker] Activating...');
+  console.log('[ServiceWorker] Activating and sweeping old caches...');
 
   event.waitUntil(
-    // Remove old caches from previous versions
+    // Remove old caches from previous versions dynamically
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames
@@ -87,18 +87,17 @@ self.addEventListener('fetch', (event) => {
 });
 
 /**
- * Fetch handler with cache-first strategy for static assets
- * and network-first for navigation requests
+ * Fetch handler with Network-First strategy for ALL requests.
+ * This guarantees live file changes update immediately during development.
  * @param {Request} request
  * @returns {Promise<Response>}
  */
 async function handleFetch(request) {
-  // Navigation requests: Network-first, fallback to cache, then offline page
+  // 1. Handle Navigation requests (HTML pages)
   if (request.mode === 'navigate') {
     try {
       const networkResponse = await fetch(request);
       
-      // Safety Validation Check: Only cache successful standard web responses
       if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
         const cache = await caches.open(CACHE_NAME);
         cache.put(request, networkResponse.clone());
@@ -110,23 +109,27 @@ async function handleFetch(request) {
     }
   }
 
-  // Static assets: Cache-first strategy
-  const cached = await caches.match(request);
-  if (cached) return cached;
-
-  // Not in cache — fetch from network and cache it safely
+  // 2. Handle Static Assets (CSS, JS, Images, CDNs) using Network-First strategy
   try {
     const networkResponse = await fetch(request);
+    
+    // Dynamically update the cache with the fresh asset from the server
     if (networkResponse && networkResponse.status === 200) {
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, networkResponse.clone());
     }
     return networkResponse;
   } catch {
-    // Network failed — return offline fallback page for HTML requests, generic error for others
+    console.log('[ServiceWorker] Network failed. Serving asset from persistent cache fallback.');
+    
+    // If local network server is unreachable/offline, serve from cache
+    const cached = await caches.match(request);
+    if (cached) return cached;
+
+    // Hard fallback if asset isn't in cache either
     if (request.headers.get('accept')?.includes('text/html')) {
       return caches.match(OFFLINE_PAGE);
     }
-    return new Response('Offline', { status: 503 });
+    return new Response('Offline resource unavailable', { status: 503 });
   }
 }
